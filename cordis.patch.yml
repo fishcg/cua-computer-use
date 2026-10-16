@@ -1,0 +1,25 @@
+# cua-computer-use — DeepSeek Harness bundle layer.
+#
+# Row 1 resolves the cua-driver executable and publishes it as the
+# `cuaComputerUse` service (see index.js).
+# Row 2 is the in-box MCP client: it injects that service and evaluates its own
+# `!!js` config only afterwards, so the resolved absolute path is available.
+# The path must be absolute: the desktop host is started by launchd, so its PATH
+# does not contain the per-user install directories cua-driver lives in.
+- insert:
+    - id: cua-computer-use
+      name: 'cua-computer-use'
+
+    - id: mcp-cua-driver
+      name: '@deepseek-ai/dsh-mcp-client'
+      inject: [cuaComputerUse]
+      config:
+        serverName: cua-driver
+        transport: stdio
+        command: !!js ctx.cuaComputerUse.command
+        args: !!js ctx.cuaComputerUse.args
+        env: !!js ctx.cuaComputerUse.env
+        # '' is the MCP client's own default and means "inherit the host cwd".
+        cwd: !!js ctx.cuaComputerUse.cwd
+        toolCallTimeoutMs: !!js ctx.cuaComputerUse.toolCallTimeoutMs
+        failOnStartupError: false
