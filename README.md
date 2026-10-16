@@ -26,7 +26,8 @@ You *can* add Cua Driver to a profile by hand. This plugin exists because doing 
 ## Requirements
 
 - DeepSeek Harness `0.2.0-rc.2` or later.
-- The `cua-driver` executable, on `PATH` or in a standard install location:
+- Nothing else for a first run. If `cua-driver` is missing, the plugin installs it — see
+  [First run](#first-run). To install it yourself instead, or to install it before the harness starts:
 
   ```sh
   # macOS / Linux
@@ -38,8 +39,39 @@ You *can* add Cua Driver to a profile by hand. This plugin exists because doing 
   irm https://cua.ai/driver/install.ps1 | iex
   ```
 
-- macOS: grant **Accessibility** and **Screen Recording** to the CuaDriver daemon, or to the terminal that
-  launched it. `cua-driver doctor` and the `mcp__cua-driver__health_report` tool report what is missing.
+- macOS: **Accessibility** and **Screen Recording**. The plugin checks these and walks you through granting
+  them; nothing else is needed from you.
+
+## First run
+
+The plugin sets itself up, in this order, and neither step can stop the harness from booting.
+
+**1. The executable.** `cua-driver` is looked for in your config, then `$CUA_DRIVER_BIN`, then the standard
+install locations, then `PATH`. If it is nowhere, the plugin runs the official installer with the same
+one-liner the vendor documents, and then looks again.
+
+The installer is driven by environment variables rather than flags — that is the interface the vendor
+documents as stable, and it behaves identically on Windows, where there is no shell to quote for. Three
+defaults are worth knowing, because a boot has no consent step and a human typing `curl … | bash` does:
+
+| Variable | Default | Why |
+| --- | --- | --- |
+| `CUA_DRIVER_RS_NO_MODIFY_PATH` | `1` | The plugin hands the MCP client an absolute path, so appending to your `~/.zshrc` would be a side effect nobody would think to look for. Set `modifyPath: true` to allow it. |
+| `CUA_DRIVER_RS_TELEMETRY_ENABLED` | `0` | Install telemetry is opt-in here, not opt-out. Set `installTelemetry: true` to send it. |
+| `CUA_DRIVER_RS_INSTALL_DIR` | unset | Set `installDir` to install somewhere other than `~/.local/bin`. |
+
+Everything the installer writes is verified against the release's `SHA256SUMS`, and the macOS app bundle is
+codesign-checked before it is linked. Set `autoInstall: false`, or export `CUA_DRIVER_NO_AUTO_INSTALL=1`, to
+keep the plugin from installing anything at all — it will then fail with the manual command instead.
+
+**2. macOS permissions.** A second after the service is published, the plugin reads
+`cua-driver permissions status --json` and, if a grant is being withheld, prints what to enable and where. It
+also asks the driver to raise the system prompts itself, **once per missing grant**: the marker lives in
+`~/.dsh/cua-computer-use/setup.json`, so later boots tell you what is still missing without re-prompting.
+
+The grant belongs to **CuaDriver**, not to DeepSeek Harness — macOS attributes these permissions to the
+process that owns the accessibility API, which is the driver daemon. Set `permissionCheck: false` to skip the
+check, or `permissionPrompt: false` to report without ever raising a prompt.
 
 ## Install
 
@@ -87,6 +119,14 @@ Set these on the `cua-computer-use` row in your profile's `cordis.patch.yml`:
 | `toolCallTimeoutMs` | `number` | `120000` | Per-call timeout. Generous by default because GUI waits and cold daemon starts are slow; the MCP client's own default is 60 s. |
 | `skill` | `boolean` | `true` | Register the bundled skill. |
 | `prompt` | `boolean` | `true` | Add the standing system-prompt note. |
+| `autoInstall` | `boolean` | `true` | Install `cua-driver` when it is missing. Off means failing with the manual command instead. |
+| `installTimeoutMs` | `number` | `300000` | Deadline for the installer. |
+| `installEnv` | `object` | `{}` | Extra environment variables for the installer; wins over the defaults above. |
+| `installTelemetry` | `boolean` | `false` | Let the installer send its install event. |
+| `modifyPath` | `boolean` | `false` | Let the installer append its directory to your shell rc files. |
+| `installDir` | `string` | `''` | Install the executable here instead of the installer's default. |
+| `permissionCheck` | `boolean` | `true` | Check the macOS grants once after startup. Windows and Linux skip this. |
+| `permissionPrompt` | `boolean` | `true` | Ask the driver to raise the macOS permission prompts, once per missing grant. |
 
 The `CUA_DRIVER_BIN` environment variable pins an absolute path and is honoured after `command` but before
 directory discovery.
@@ -128,8 +168,18 @@ cua-driver doctor             # daemon and permission health
 ```
 
 If the tools do not appear, the host log carries a `[cua-computer-use]` line naming the resolved path on success,
-or every directory searched on failure. The plugin throws at load time rather than registering a row that cannot
-spawn.
+or every directory searched on failure. A missing binary is loud but not fatal: the plugin's own row goes
+inactive with the exact fix, and every other row keeps running. The MCP row then stays `pending (waiting for
+service: cuaComputerUse)` instead of dying, so fixing the binary and restarting is all it takes.
+
+Setup lines you should expect on a first run:
+
+```
+[cua-computer-use] cua-driver was not found; installing it with the official installer
+[cua-computer-use] cua-driver installed: /Users/you/.local/bin/cua-driver
+[cua-computer-use] cua-driver: /Users/you/.local/bin/cua-driver (via known-directory)
+[cua-computer-use] macOS is withholding Accessibility, so the cua-driver tools will observe but not act.
+```
 
 ## Development
 

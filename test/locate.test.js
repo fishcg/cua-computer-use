@@ -17,7 +17,12 @@ import {
   searchDirectories,
 } from '../lib/locate.js'
 
-/** A probe that reports exactly the given paths as runnable. */
+/**
+ * A probe that reports exactly the given paths as runnable.
+ *
+ * @param {...string} paths - paths the fake filesystem should contain.
+ * @returns {(path: string) => boolean} the probe.
+ */
 const probeFor = (...paths) => (path) => paths.includes(path)
 
 const BASE = { platform: 'darwin', home: '/Users/test', env: { PATH: '/usr/bin:/bin' } }

@@ -2,7 +2,7 @@
 name: cua-computer-use
 description: Drive a native GUI application on the host through the cua-driver MCP tools registered by the cua-computer-use plugin — read a window's accessibility tree, act on snapshot-bound element tokens or pixel coordinates, and verify the result from fresh state. Use when the user asks to operate, automate, click through, fill in, or take a screenshot of a real application (Finder, System Settings, Word, a game launcher, a browser window the browser tools cannot reach), or to continue earlier Cua activity.
 when-to-use: The task needs a real application's UI rather than an API, CLI, or file — "open X and do Y", "click the button in X", "fill this form in the app", "read what that window says", "screenshot my screen". Also when a GUI step blocks an otherwise scriptable task.
-version: 1.0.0
+version: 1.1.0
 ---
 
 # Computer use through Cua Driver
@@ -84,6 +84,11 @@ Some surfaces (Electron, Catalyst, virtualized rows) report an empty or misleadi
 `check_permissions({ prompt: false })` reports Accessibility and Screen Recording grants read-only;
 `health_report()` is the one-call end-to-end diagnostic. If capture is blocked, the fix is granting the
 permission to the **CuaDriver daemon** (or to the terminal that launched it), not to DeepSeek Harness.
+
+The plugin already checks both grants about a second after startup and prints what to enable and where, so if
+the user reports that clicking does nothing, re-run `check_permissions({ prompt: false })` first and quote its
+output before suggesting anything — and do not ask them to reinstall the binary, which is a different problem
+with a different symptom (the tools would be missing entirely, not merely inert).
 
 ## Environment
 

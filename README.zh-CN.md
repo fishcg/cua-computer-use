@@ -25,7 +25,8 @@ Cua Driver 自带一个 MCP 服务器（`cua-driver mcp`），对外提供一套
 ## 前置条件
 
 - DeepSeek Harness `0.2.0-rc.2` 及以上。
-- `cua-driver` 可执行文件，位于 `PATH` 或标准安装目录：
+- 首次运行不需要其它准备。`cua-driver` 缺失时插件会自己装，见[首次运行](#首次运行)。如果你想自己装、或者想在
+  启动 Harness 之前先装好：
 
   ```sh
   # macOS / Linux
@@ -37,8 +38,33 @@ Cua Driver 自带一个 MCP 服务器（`cua-driver mcp`），对外提供一套
   irm https://cua.ai/driver/install.ps1 | iex
   ```
 
-- macOS 需要给 **CuaDriver 守护进程**（或启动它的终端）授予「辅助功能」和「屏幕录制」权限。
-  `cua-driver doctor` 和 `mcp__cua-driver__health_report` 工具会告诉你缺什么。
+- macOS 需要「辅助功能」和「屏幕录制」权限。插件会检查并一步步引导你授权，不需要你额外做什么。
+
+## 首次运行
+
+插件会自己完成下面两步，而且两步都不会阻止 Harness 启动。
+
+**一、可执行文件。** 查找顺序是：配置项 → `$CUA_DRIVER_BIN` → 标准安装目录 → `PATH`。都没有时，插件用官方
+文档里的同一条命令安装，然后再找一次。
+
+安装器通过**环境变量**驱动而不是命令行参数——这是官方文档承诺稳定的接口，而且在 Windows 上没有 shell 引号
+问题。有三个默认值需要知道，因为开机启动没有人点「同意」，而手敲 `curl … | bash` 的人是自己同意了：
+
+| 环境变量 | 默认值 | 原因 |
+| --- | --- | --- |
+| `CUA_DRIVER_RS_NO_MODIFY_PATH` | `1` | 插件会把绝对路径直接交给 MCP 客户端，所以往你的 `~/.zshrc` 里追加 PATH 属于没人会想到去查的副作用。设 `modifyPath: true` 可放开。 |
+| `CUA_DRIVER_RS_TELEMETRY_ENABLED` | `0` | 安装遥测在这里是「选择加入」，不是「选择退出」。设 `installTelemetry: true` 才发送。 |
+| `CUA_DRIVER_RS_INSTALL_DIR` | 未设置 | 设 `installDir` 可装到 `~/.local/bin` 以外的地方。 |
+
+安装器写入的每个文件都会校验发布包的 `SHA256SUMS`，macOS 的 app bundle 在建立软链之前会校验签名。设
+`autoInstall: false`，或导出 `CUA_DRIVER_NO_AUTO_INSTALL=1`，插件就完全不装，改为直接报错并给出手动命令。
+
+**二、macOS 权限。** 服务发布一秒后，插件读取 `cua-driver permissions status --json`；如果有权限被拒绝，
+它会打印该开什么、在哪里开，并让驱动自己弹出系统授权弹窗——**每种缺失的权限只弹一次**，标记存在
+`~/.dsh/cua-computer-use/setup.json`，所以之后的启动只会告诉你还缺什么，不会反复弹窗。
+
+权限归属于 **CuaDriver**，不属于 DeepSeek Harness——macOS 把这类权限记在拥有无障碍 API 的那个进程上，也就是
+驱动守护进程。设 `permissionCheck: false` 可跳过检查，设 `permissionPrompt: false` 则只报告、不弹窗。
 
 ## 安装
 
@@ -86,6 +112,14 @@ dsh plugin --profile web add github:fishcg/cua-computer-use
 | `toolCallTimeoutMs` | `number` | `120000` | 单次调用超时。默认给得比较宽，因为 GUI 等待和守护进程冷启动都很慢；MCP 客户端自身的默认值是 60 秒。 |
 | `skill` | `boolean` | `true` | 是否注册自带技能。 |
 | `prompt` | `boolean` | `true` | 是否写入常驻系统提示词。 |
+| `autoInstall` | `boolean` | `true` | 缺失时是否自动安装 `cua-driver`。关闭则直接报错并给出手动命令。 |
+| `installTimeoutMs` | `number` | `300000` | 安装器超时时间。 |
+| `installEnv` | `object` | `{}` | 追加给安装器的环境变量，优先级高于上面的默认值。 |
+| `installTelemetry` | `boolean` | `false` | 是否允许安装器上报安装事件。 |
+| `modifyPath` | `boolean` | `false` | 是否允许安装器往 shell 配置文件里追加 PATH。 |
+| `installDir` | `string` | `''` | 安装到指定目录，而非安装器默认目录。 |
+| `permissionCheck` | `boolean` | `true` | 启动后检查一次 macOS 权限。Windows 与 Linux 会跳过。 |
+| `permissionPrompt` | `boolean` | `true` | 是否让驱动弹出 macOS 授权弹窗，每种缺失权限只弹一次。 |
 
 环境变量 `CUA_DRIVER_BIN` 可以钉死一个绝对路径，优先级高于目录搜索、低于 `command`。
 
@@ -125,7 +159,17 @@ cua-driver doctor             # 守护进程与权限健康检查
 ```
 
 如果没有出现工具，宿主日志里会有一条 `[cua-computer-use]` 开头的记录：成功时给出解析到的路径，失败时列出搜索过的
-每个目录。插件选择在加载期直接抛错，而不是注册一个注定启动不了的行。
+每个目录。找不到二进制时动静很大但不致命：插件自己那一行会带着确切的修复方法转为未激活，其余各行照常运行，MCP 行
+则停在 `pending (waiting for service: cuaComputerUse)` 而不是直接死掉——装好二进制重启即可。
+
+首次运行应该能看到这类日志：
+
+```
+[cua-computer-use] cua-driver was not found; installing it with the official installer
+[cua-computer-use] cua-driver installed: /Users/you/.local/bin/cua-driver
+[cua-computer-use] cua-driver: /Users/you/.local/bin/cua-driver (via known-directory)
+[cua-computer-use] macOS is withholding Accessibility, so the cua-driver tools will observe but not act.
+```
 
 ## 开发
 

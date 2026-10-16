@@ -1,6 +1,6 @@
 {
   "name": "cua-computer-use",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Wire the cua-driver MCP server into DeepSeek Harness as native computer-use tools.",
   "type": "module",
   "main": "index.js",
